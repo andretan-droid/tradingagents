@@ -4,6 +4,7 @@ import time
 from collections import deque
 from functools import wraps
 from pathlib import Path
+from typing import Annotated
 
 import typer
 from rich import box
@@ -1384,6 +1385,52 @@ def dashboard(
 
     console.print(f"[green]Starting dashboard at http://{host}:{port}/ (Ctrl+C to stop)[/green]")
     run_dashboard(host=host, port=port)
+
+
+@app.command()
+def backtest(
+    start_date: str = typer.Option(..., "--start-date", help="YYYY-MM-DD"),
+    end_date: str = typer.Option(..., "--end-date", help="YYYY-MM-DD"),
+    source: str = typer.Option("memory", help="Decision source: memory | artifacts | live"),
+    tickers: Annotated[list[str] | None, typer.Option(help="Filter (replay) or universe (live)")] = None,
+    sectors: Annotated[list[str] | None, typer.Option(help="Universe for --source live")] = None,
+    watchlist: str = typer.Option(None, help="Watchlist file for --source live"),
+    initial_cash: float = typer.Option(100_000.0),
+    benchmark: str = typer.Option("SPY"),
+    holding_period_exit: int = typer.Option(None, help="Auto-close positions after N days"),
+    position_pct: float = typer.Option(0.05),
+    max_positions: int = typer.Option(15),
+    max_sector_pct: float = typer.Option(0.35),
+    risk_free_rate: float = typer.Option(0.0),
+    whole_shares: bool = typer.Option(False),
+    yes: bool = typer.Option(False, help="Confirm the cost of --source live"),
+):
+    """Backtest the strategy over a historical range and report vs a benchmark.
+
+    Default source `memory` replays decisions already saved by prior analyze /
+    auto_trader runs (free, look-ahead-clean). `live` re-runs the agents over
+    history (expensive, requires --yes; sentiment data isn't historical).
+    """
+    from tradingagents.backtest.runner import run_and_report
+
+    run_and_report(
+        start_date=start_date,
+        end_date=end_date,
+        source=source,
+        tickers=list(tickers) if tickers else None,
+        sectors=list(sectors) if sectors else None,
+        watchlist=watchlist,
+        initial_cash=initial_cash,
+        benchmark=benchmark,
+        holding_period_exit=holding_period_exit,
+        position_pct=position_pct,
+        max_positions=max_positions,
+        max_sector_pct=max_sector_pct,
+        risk_free_rate=risk_free_rate,
+        whole_shares=whole_shares,
+        confirm_live=yes,
+        console=console,
+    )
 
 
 if __name__ == "__main__":

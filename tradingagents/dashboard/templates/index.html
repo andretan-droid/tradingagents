@@ -49,6 +49,10 @@
 <h2>Latest Screener / Auto-Trader Run</h2>
 <div id="latest-run"></div>
 
+<h2>Latest Backtest</h2>
+<div id="latest-backtest"></div>
+<canvas id="backtest-chart"></canvas>
+
 <script>
 const initialData = {{ data | tojson }};
 
@@ -147,12 +151,66 @@ function renderEquityChart(data) {
   });
 }
 
+function fmtPct(x) {
+  if (x === null || x === undefined) return "-";
+  return (x >= 0 ? "+" : "") + (Number(x) * 100).toFixed(2) + "%";
+}
+
+let backtestChart = null;
+function renderLatestBacktest(data) {
+  const el = document.getElementById("latest-backtest");
+  const canvas = document.getElementById("backtest-chart");
+  if (!data.latest_backtest) {
+    el.innerHTML = '<p class="muted">No backtest yet. Run: tradingagents backtest --start-date ... --end-date ...</p>';
+    canvas.style.display = "none";
+    return;
+  }
+  canvas.style.display = "block";
+  const bt = data.latest_backtest;
+  const m = bt.metrics || {};
+  const cfg = bt.config || {};
+  const retClass = (m.total_return >= 0) ? "pos" : "neg";
+  const alphaClass = (m.alpha >= 0) ? "pos" : "neg";
+  el.innerHTML =
+    `<p class="muted">${cfg.start_date} → ${cfg.end_date} · benchmark ${cfg.benchmark}</p>` +
+    `<table><tbody>` +
+    `<tr><td>Total return</td><td class="${retClass}">${fmtPct(m.total_return)}</td></tr>` +
+    `<tr><td>Benchmark return</td><td>${fmtPct(m.benchmark_return)}</td></tr>` +
+    `<tr><td>Alpha</td><td class="${alphaClass}">${fmtPct(m.alpha)}</td></tr>` +
+    `<tr><td>CAGR</td><td>${fmtPct(m.cagr)}</td></tr>` +
+    `<tr><td>Sharpe</td><td>${(m.sharpe ?? 0).toFixed(2)}</td></tr>` +
+    `<tr><td>Max drawdown</td><td class="neg">${fmtPct(m.max_drawdown)}</td></tr>` +
+    `<tr><td>Win rate</td><td>${((m.win_rate ?? 0) * 100).toFixed(0)}%</td></tr>` +
+    `<tr><td>Trades</td><td>${m.num_trades ?? 0}</td></tr>` +
+    `</tbody></table>`;
+
+  const labels = bt.dates || [];
+  const strat = bt.equity_curve || [];
+  const bench = bt.benchmark_curve || [];
+  if (backtestChart) {
+    backtestChart.data.labels = labels;
+    backtestChart.data.datasets[0].data = strat;
+    backtestChart.data.datasets[1].data = bench;
+    backtestChart.update();
+    return;
+  }
+  backtestChart = new Chart(canvas, {
+    type: "line",
+    data: { labels, datasets: [
+      { label: "Strategy ($)", data: strat, borderColor: "#2563eb", tension: 0.2 },
+      { label: "Benchmark ($)", data: bench, borderColor: "#9ca3af", borderDash: [5, 5], tension: 0.2 },
+    ] },
+    options: { responsive: true },
+  });
+}
+
 function renderAll(data) {
   renderAccountCards(data);
   renderPositions(data);
   renderOrders(data);
   renderLatestRun(data);
   renderEquityChart(data);
+  renderLatestBacktest(data);
 }
 
 renderAll(initialData);

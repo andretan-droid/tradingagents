@@ -353,7 +353,33 @@ pip install ".[dashboard]"
 tradingagents dashboard
 ```
 
-Opens a local, read-only web page (default http://127.0.0.1:5000/, auto-refreshes every 60s) showing live account equity/cash/buying power, open positions, recent orders, an equity-history chart, and the latest `auto_trader.py` run's screener/decision results. It never places an order — it only reads from Alpaca and the local run artifacts. Binds to `127.0.0.1` (your machine only) by default; pass `--host 0.0.0.0` only if you understand the security implications of exposing it beyond localhost.
+Opens a local, read-only web page (default http://127.0.0.1:5000/, auto-refreshes every 60s) showing live account equity/cash/buying power, open positions, recent orders, an equity-history chart, the latest `auto_trader.py` run's screener/decision results, and the latest backtest. It never places an order — it only reads from Alpaca and the local run artifacts. Binds to `127.0.0.1` (your machine only) by default; pass `--host 0.0.0.0` only if you understand the security implications of exposing it beyond localhost.
+
+## Backtesting
+
+Backtesting answers the question the rest of the pipeline can't: **would these decisions actually have made money?** It replays trading decisions through a simulated portfolio over a historical date range and reports performance against a buy-and-hold benchmark. The simulator reuses the exact live risk-sizing/limit logic (`route_portfolio_decision`), so a backtest exercises the real code path, not a reimplementation.
+
+```bash
+# Replay decisions your system already made (free, no LLM calls):
+tradingagents backtest --start-date 2026-01-01 --end-date 2026-06-30
+python scripts/backtest.py --start-date 2026-01-01 --end-date 2026-06-30 --source artifacts
+```
+
+It prints a metrics table (total return, alpha vs benchmark, CAGR, Sharpe, Sortino, max drawdown, win rate, trade count, avg holding period), writes `<results_dir>/backtest/<timestamp>.json` + `_equity.csv`, and refreshes `backtest/latest.json` so the dashboard's "Latest Backtest" section (equity vs benchmark chart + headline metrics) picks it up.
+
+### Decision sources (the important part)
+
+- **`--source memory`** (default): replays decisions already saved to the memory log by prior `analyze` / `auto_trader` runs.
+- **`--source artifacts`**: replays saved `auto_trader/*.json` + `watchlist_scans/*.csv` run artifacts.
+- **`--source live`**: re-runs the full multi-agent pipeline for every ticker/date in the range. **Expensive** (one full agent run per pair — the CLI prints a cost estimate and requires `--yes`), and it has an honesty problem worth understanding.
+
+**Why replay is the default, and the live-mode caveat**: replay modes are look-ahead-clean because those ratings were produced in real time on their date — nothing from the future leaked in. Live mode re-runs the agents *today* against historical dates: prices and news are date-scoped (the framework filters future-dated news), but **social sentiment (Reddit/StockTwits) is "now" data and cannot be reconstructed historically**, so a live backtest of an old period is contaminated by present-day sentiment. Treat `--source live` as a plumbing/smoke check, not a clean historical study. This also means replay only covers periods you've *already* traded forward — a fresh install has no history to replay yet, so the honest way to build a track record is to let `auto_trader` run daily and backtest the accumulating decisions over time.
+
+### Useful flags
+
+`--initial-cash` (default 100000, matches a fresh Alpaca paper account), `--benchmark` (default SPY), `--holding-period-exit N` (optionally auto-close positions after N days — otherwise a position is held until an explicit Sell), `--position-pct`/`--max-positions`/`--max-sector-pct` (the same `RiskLimits` used live), `--whole-shares` (floor to whole shares instead of fractional).
+
+**Limitations**: the sector universe (`--source live --sectors`) is a current-membership S&P 500 snapshot with no delisted names, so sector backtests have survivorship bias; yfinance price history is split/dividend-adjusted (total-return) and thins out for names far in the past. Backtest results validate the *decision logic and portfolio mechanics*, not a guaranteed forward return.
 
 ## Reproducibility
 

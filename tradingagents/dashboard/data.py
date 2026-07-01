@@ -33,6 +33,17 @@ def equity_history(results_dir: str) -> list[dict]:
         return list(csv.DictReader(f))
 
 
+def latest_backtest_artifact(results_dir: str) -> dict | None:
+    """Return the most recent backtest report (backtest/latest.json), or None."""
+    path = Path(results_dir) / "backtest" / "latest.json"
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
 def account_snapshot(broker) -> dict:
     account = broker.get_account()
     return {
@@ -82,6 +93,7 @@ def build_dashboard_data(config: dict, broker) -> dict:
         "orders": [],
         "equity_history": equity_history(config["results_dir"]),
         "latest_run": latest_run_artifact(config["results_dir"]),
+        "latest_backtest": latest_backtest_artifact(config["results_dir"]),
         "broker_error": None,
     }
     if broker is None:

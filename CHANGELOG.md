@@ -10,6 +10,18 @@ Breaking changes within the 0.x line are called out explicitly.
 
 ### Added
 
+- **Backtesting.** New `tradingagents/backtest/` package + `tradingagents
+  backtest` command and `scripts/backtest.py` simulate the strategy over a
+  historical range and report performance vs a buy-and-hold benchmark (total
+  return, alpha, CAGR, Sharpe, Sortino, max drawdown, win rate, avg holding).
+  A `SimulatedBroker` duck-types the Alpaca interface so the live
+  `route_portfolio_decision` risk logic runs unchanged in-sim. Three decision
+  sources: `memory` (default) and `artifacts` replay decisions already made in
+  real time (free, look-ahead-clean); `live` re-runs the agents over history
+  (expensive, gated behind `--yes`, with a documented sentiment-not-historical
+  caveat). Optional `--holding-period-exit` auto-exit. Writes JSON/CSV reports
+  and a `backtest/latest.json` surfaced in a new dashboard "Latest Backtest"
+  section (equity-vs-benchmark chart). See the README "Backtesting" section.
 - **Alpaca paper-trading execution.** Optional `[alpaca]` extra links a run to
   a free Alpaca paper account: when `TRADINGAGENTS_BROKER_ENABLED=true`, each
   completed decision submits a fixed-notional market paper order (Buy /
@@ -41,6 +53,11 @@ Breaking changes within the 0.x line are called out explicitly.
   local, read-only web page with live account/positions/orders, an
   equity-history chart, and the latest run's screener results. See the
   README "Automated screener + portfolio trading" and "Dashboard" sections.
+
+### Changed
+
+- Dropped the unused `backtrader` dependency (imported nowhere; the backtester
+  is a purpose-built lightweight simulator).
 
 ## [0.3.0] — 2026-06-22
 
