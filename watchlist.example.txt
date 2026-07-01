@@ -1,0 +1,42 @@
+# TradingAgents watchlist — one plain US-listed ticker per line.
+#
+# Used by scripts/watchlist_scanner.py to automatically run analysis (and,
+# if TRADINGAGENTS_BROKER_ENABLED=true, submit paper orders) for every ticker
+# below on each scheduled run.
+#
+# Lines starting with # are comments/section headers and are ignored.
+# Copy this file to watchlist.txt and edit freely — add, remove, or reorder
+# tickers. Sector headers below are just for your own organization; the
+# scanner does not treat them specially.
+#
+# These starter tickers are illustrative examples only (a mix of large caps
+# and smaller/lesser-known names), NOT investment recommendations. Do your
+# own research before adding anything you'd act on with real money.
+
+# --- Technology ---
+AAPL
+MSFT
+NVDA
+AMD
+DDOG
+
+# --- Healthcare / Biotech ---
+UNH
+LLY
+VRTX
+EXAS
+CRSP
+
+# --- Energy ---
+XOM
+CVX
+ENPH
+FSLR
+CEG
+
+# --- Financials ---
+JPM
+V
+SOFI
+UPST
+AXP

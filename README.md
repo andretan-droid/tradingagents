@@ -290,6 +290,38 @@ TradingAgents can link to a free [Alpaca](https://alpaca.markets/) paper-trading
 
 Only supports plain US-listed stock tickers (`AAPL`, not `0700.HK` or `BTC-USD`); orders for other markets, crypto, forex, or commodities are skipped with a log message since Alpaca's paper equities account can't execute them. Position sizing is a fixed notional dollar amount per order — there is no portfolio-aware sizing, stop-loss, or risk-limit logic yet, so treat this as a way to observe the framework's decisions as real (paper) fills rather than a managed strategy.
 
+### Watchlist scanner (unattended daily runs)
+
+`tradingagents analyze` is interactive and analyzes one ticker per invocation. `scripts/watchlist_scanner.py` runs the same analysis across a whole list of tickers in one pass and is meant to be triggered on a schedule, so you get a fresh decision (and paper order, if enabled) for every ticker in your list without running the CLI by hand each day.
+
+1. Copy the starter list and edit it to your tickers (one plain US-listed ticker per line, `#` for comments):
+   ```bash
+   cp watchlist.example.txt watchlist.txt
+   ```
+2. Run it manually first to check it works:
+   ```bash
+   python scripts/watchlist_scanner.py
+   ```
+   It analyzes each ticker in turn (with a delay between them to stay under LLM rate limits), prints a summary table (rating + whether an order was placed), and writes a CSV summary to `<results_dir>/watchlist_scans/<date>.csv`. A single ticker failing (rate limit, bad symbol, etc.) is logged and skipped — it does not stop the rest of the scan. It skips weekends by default (`--no-skip-weekends` to override).
+3. Useful flags: `--watchlist path/to/list.txt`, `--date 2026-07-01`, `--delay 45` (seconds between tickers — raise this if you hit rate limits).
+
+**Discovery, not just monitoring:** there is no ticker-screener here — the scanner only analyzes tickers you put in the list. Each analysis still does the framework's normal fundamentals/valuation work per ticker (that's where "is this cheap/undervalued" judgment comes from), so putting lesser-known names alongside large caps in your watchlist is how you get a read on them; the framework does not search the market for new candidates on its own.
+
+**Cost note:** since this can run automatically every day, keep the watchlist and research depth (`TRADINGAGENTS_MAX_DEBATE_ROUNDS` / `TRADINGAGENTS_MAX_RISK_ROUNDS`, default 1/1 = "Shallow") sized to what you're comfortable paying for in LLM API calls — 20 tickers/day adds up over a month.
+
+#### Scheduling on Windows (Task Scheduler)
+
+`scripts/run_watchlist_scan.bat` activates the project's virtual environment and runs the scanner; point a scheduled task at that file so it runs automatically even when you're not at the keyboard (as long as the PC is on).
+
+1. Open **Task Scheduler** (search for it in the Start menu) → **Create Basic Task...**
+2. Name it (e.g. "TradingAgents Daily Scan") → **Next**
+3. Trigger: **Daily** → pick a time before market open (e.g. 8:00 AM) → **Next**
+4. Action: **Start a program** → **Next**
+5. Program/script: browse to `run_watchlist_scan.bat` inside your `tradingagents\scripts` folder → **Next** → **Finish**
+6. Optional: right-click the new task → **Properties** → check "Run whether user is logged on or not" if you want it to run even when locked/logged out.
+
+To test it immediately instead of waiting for the scheduled time, right-click the task and choose **Run**. Check `<results_dir>/watchlist_scans/` (default `%USERPROFILE%\.tradingagents\logs\watchlist_scans`) for that day's CSV, or run `tradingagents portfolio` to see any resulting orders.
+
 ## Reproducibility
 
 TradingAgents is LLM-driven, so two runs of the same ticker and date can differ. This is expected for a research tool built on language models, not a defect. The variation comes from a few distinct sources, and it helps to separate them.

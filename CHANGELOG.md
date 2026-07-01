@@ -18,6 +18,12 @@ Breaking changes within the 0.x line are called out explicitly.
   account's equity, open positions, and recent order history. Off by default;
   always talks to Alpaca's paper endpoint only. See the README "Paper Trading
   (Alpaca)" section.
+- **Watchlist scanner for unattended daily runs.** `scripts/watchlist_scanner.py`
+  runs analysis (and paper-order execution, if enabled) across a whole
+  watchlist file in one pass, skipping weekends and continuing past a single
+  ticker's failure. `scripts/run_watchlist_scan.bat` + a Windows Task
+  Scheduler entry lets it run automatically on a daily schedule. See the
+  README "Watchlist scanner (unattended daily runs)" section.
 
 ## [0.3.0] — 2026-06-22
 
