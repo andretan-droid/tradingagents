@@ -49,6 +49,11 @@ bedrock = [
 alpaca = [
     "alpaca-py>=0.33.0",
 ]
+# Local dashboard for watching the paper account. Optional so the core
+# install stays lean: pip install "tradingagents[dashboard]".
+dashboard = [
+    "flask>=3.0",
+]
 
 [project.scripts]
 tradingagents = "cli.main:app"
@@ -58,6 +63,7 @@ include = ["tradingagents*", "cli*"]
 
 [tool.setuptools.package-data]
 cli = ["static/*"]
+tradingagents = ["dashboard/templates/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

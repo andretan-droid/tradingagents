@@ -99,6 +99,17 @@ class AlpacaBroker:
             status=str(order.status.value if hasattr(order.status, "value") else order.status),
         )
 
+    def close_position(self, symbol: str) -> OrderResult:
+        """Fully liquidate an existing position with a market order."""
+        order = self._client.close_position(symbol)
+        return OrderResult(
+            order_id=str(order.id),
+            symbol=order.symbol,
+            side=str(order.side.value if hasattr(order.side, "value") else order.side),
+            notional=float(order.notional) if order.notional else 0.0,
+            status=str(order.status.value if hasattr(order.status, "value") else order.status),
+        )
+
     def get_account(self) -> Any:
         """Return the paper account (equity, cash, buying power, ...)."""
         return self._client.get_account()

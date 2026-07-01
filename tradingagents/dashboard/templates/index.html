@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TradingAgents Paper Trading Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; max-width: 1100px; margin: 2rem auto; padding: 0 1rem; }
+  h1 { font-size: 1.4rem; }
+  h2 { font-size: 1.1rem; margin-top: 2rem; }
+  .cards { display: flex; gap: 1rem; flex-wrap: wrap; }
+  .card { border: 1px solid #8883; border-radius: 8px; padding: 1rem 1.5rem; min-width: 160px; }
+  .card .label { font-size: 0.8rem; opacity: 0.7; }
+  .card .value { font-size: 1.4rem; font-weight: 600; }
+  table { border-collapse: collapse; width: 100%; margin-top: 0.5rem; }
+  th, td { text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid #8882; font-size: 0.9rem; }
+  th { opacity: 0.7; font-weight: 600; }
+  .pos { color: #16a34a; }
+  .neg { color: #dc2626; }
+  .error { color: #dc2626; padding: 0.5rem; border: 1px solid #dc262655; border-radius: 6px; }
+  .muted { opacity: 0.6; }
+  canvas { max-height: 280px; }
+</style>
+</head>
+<body>
+<h1>TradingAgents Paper Trading Dashboard</h1>
+<p class="muted">Auto-refreshes every 60s. Read-only — this page never places an order itself.</p>
+
+<div id="broker-error" class="error" style="display:none"></div>
+
+<div class="cards" id="account-cards"></div>
+
+<h2>Open Positions</h2>
+<table id="positions-table">
+  <thead><tr><th>Symbol</th><th>Qty</th><th>Avg Entry</th><th>Market Value</th><th>Unrealized P/L</th></tr></thead>
+  <tbody></tbody>
+</table>
+
+<h2>Recent Orders</h2>
+<table id="orders-table">
+  <thead><tr><th>Submitted</th><th>Symbol</th><th>Side</th><th>Notional</th><th>Status</th></tr></thead>
+  <tbody></tbody>
+</table>
+
+<h2>Equity History</h2>
+<canvas id="equity-chart"></canvas>
+
+<h2>Latest Screener / Auto-Trader Run</h2>
+<div id="latest-run"></div>
+
+<script>
+const initialData = {{ data | tojson }};
+
+function fmtUsd(n) {
+  if (n === null || n === undefined) return "-";
+  return "$" + Number(n).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
+
+function renderAccountCards(data) {
+  const errEl = document.getElementById("broker-error");
+  if (data.broker_error) {
+    errEl.style.display = "block";
+    errEl.textContent = data.broker_error;
+  } else {
+    errEl.style.display = "none";
+  }
+  const cards = document.getElementById("account-cards");
+  cards.innerHTML = "";
+  if (!data.account) return;
+  const items = [
+    ["Equity", fmtUsd(data.account.equity)],
+    ["Cash", fmtUsd(data.account.cash)],
+    ["Buying Power", fmtUsd(data.account.buying_power)],
+  ];
+  for (const [label, value] of items) {
+    const div = document.createElement("div");
+    div.className = "card";
+    div.innerHTML = `<div class="label">${label}</div><div class="value">${value}</div>`;
+    cards.appendChild(div);
+  }
+}
+
+function renderPositions(data) {
+  const tbody = document.querySelector("#positions-table tbody");
+  tbody.innerHTML = "";
+  if (!data.positions.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="muted">No open positions.</td></tr>';
+    return;
+  }
+  for (const p of data.positions) {
+    const plClass = p.unrealized_pl >= 0 ? "pos" : "neg";
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${p.symbol}</td><td>${p.qty}</td><td>${fmtUsd(p.avg_entry_price)}</td>` +
+      `<td>${fmtUsd(p.market_value)}</td><td class="${plClass}">${fmtUsd(p.unrealized_pl)}</td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+function renderOrders(data) {
+  const tbody = document.querySelector("#orders-table tbody");
+  tbody.innerHTML = "";
+  if (!data.orders.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="muted">No orders yet.</td></tr>';
+    return;
+  }
+  for (const o of data.orders) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${o.submitted_at}</td><td>${o.symbol}</td><td>${o.side}</td>` +
+      `<td>${fmtUsd(o.notional)}</td><td>${o.status}</td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+function renderLatestRun(data) {
+  const el = document.getElementById("latest-run");
+  if (!data.latest_run) {
+    el.innerHTML = '<p class="muted">No auto_trader.py run yet.</p>';
+    return;
+  }
+  const run = data.latest_run;
+  let rows = run.results.map(r =>
+    `<tr><td>${r.ticker}</td><td>${r.sector}</td><td>${r.rating || "-"}</td>` +
+    `<td>${r.action || "-"}</td><td>${r.pe_ratio ?? "-"}</td><td>${r.price_to_book ?? "-"}</td>` +
+    `<td>${r.error || ""}</td></tr>`
+  ).join("");
+  el.innerHTML = `<p><strong>${run.date}</strong></p><table>` +
+    `<thead><tr><th>Ticker</th><th>Sector</th><th>Rating</th><th>Action</th><th>P/E</th><th>P/B</th><th>Error</th></tr></thead>` +
+    `<tbody>${rows}</tbody></table>`;
+}
+
+let equityChart = null;
+function renderEquityChart(data) {
+  const ctx = document.getElementById("equity-chart");
+  const labels = data.equity_history.map(r => r.timestamp);
+  const values = data.equity_history.map(r => Number(r.equity));
+  if (equityChart) {
+    equityChart.data.labels = labels;
+    equityChart.data.datasets[0].data = values;
+    equityChart.update();
+    return;
+  }
+  equityChart = new Chart(ctx, {
+    type: "line",
+    data: { labels, datasets: [{ label: "Equity ($)", data: values, borderColor: "#2563eb", tension: 0.2 }] },
+    options: { responsive: true, plugins: { legend: { display: false } } },
+  });
+}
+
+function renderAll(data) {
+  renderAccountCards(data);
+  renderPositions(data);
+  renderOrders(data);
+  renderLatestRun(data);
+  renderEquityChart(data);
+}
+
+renderAll(initialData);
+
+setInterval(() => {
+  fetch("/api/data").then(r => r.json()).then(renderAll).catch(() => {});
+}, 60000);
+</script>
+</body>
+</html>

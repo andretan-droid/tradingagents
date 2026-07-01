@@ -1364,5 +1364,27 @@ def portfolio():
         console.print("[dim]No orders yet.[/dim]")
 
 
+@app.command()
+def dashboard(
+    port: int = typer.Option(5000, help="Port to serve the dashboard on"),
+    host: str = typer.Option("127.0.0.1", help="Host to bind to (default: local machine only)"),
+):
+    """Launch the local web dashboard (account, positions, orders, equity chart, latest auto_trader run).
+
+    Read-only — it never places an order. Open http://<host>:<port>/ in your
+    browser once it starts.
+    """
+    try:
+        from tradingagents.dashboard.app import run as run_dashboard
+    except ImportError:
+        console.print(
+            '[red]Dashboard support isn\'t installed. Run:[/red] pip install "tradingagents[dashboard]"'
+        )
+        raise typer.Exit(1) from None
+
+    console.print(f"[green]Starting dashboard at http://{host}:{port}/ (Ctrl+C to stop)[/green]")
+    run_dashboard(host=host, port=port)
+
+
 if __name__ == "__main__":
     app()

@@ -322,6 +322,39 @@ Only supports plain US-listed stock tickers (`AAPL`, not `0700.HK` or `BTC-USD`)
 
 To test it immediately instead of waiting for the scheduled time, right-click the task and choose **Run**. Check `<results_dir>/watchlist_scans/` (default `%USERPROFILE%\.tradingagents\logs\watchlist_scans`) for that day's CSV, or run `tradingagents portfolio` to see any resulting orders.
 
+### Automated screener + portfolio trading
+
+`scripts/auto_trader.py` goes a step further than the watchlist scanner: instead of reading a ticker list you maintain by hand, it screens a whole sector universe for cheap candidates itself, and sizes orders as a percentage of account equity with basic risk limits instead of a fixed dollar amount per trade.
+
+Pipeline, once a day:
+1. **Screen** — `tradingagents.discovery.screener` fetches trailing P/E and price-to-book for every ticker in the selected sectors (a curated S&P 500 subset across Technology, Healthcare, Energy, Financials — see `tradingagents/discovery/sp500_universe.py`, editable) and ranks each sector's tickers from cheapest to most expensive relative to its peers. No LLM calls in this step — it's a numeric pre-filter.
+2. **Analyze** — the top N cheapest candidates per sector (default 5) go through the full multi-agent pipeline, same as `tradingagents analyze`.
+3. **Route** — each Buy/Sell decision is checked against risk limits before an order is submitted (`tradingagents.execution.portfolio_router`, moderate profile by default):
+   - position size = 5% of current account equity per trade (not a fixed dollar amount)
+   - skips a Buy if you already hold that ticker, or if you're at the max of 15 open positions, or if it would push that sector above 35% of account equity
+   - a Sell only fires (and fully closes the position) if you're actually holding shares
+4. **Notify** — if `DISCORD_WEBHOOK_URL` is set, posts a message for every order placed plus a run summary at the end.
+5. **Log** — writes `<results_dir>/auto_trader/<date>.json` (screener results + decisions + orders) and appends a row to `<results_dir>/equity_history.csv` for the dashboard's equity chart.
+
+```bash
+python scripts/auto_trader.py                                  # all 4 sectors, top 5 cheapest each
+python scripts/auto_trader.py --sectors Technology Energy --top-n 3
+python scripts/auto_trader.py --position-pct 0.03 --max-positions 20 --max-sector-pct 0.25
+```
+
+Scanning the whole sector universe (~200 tickers of numeric-only yfinance lookups) takes a few minutes on its own, on top of the per-candidate LLM analysis time — budget more wall-clock time than the watchlist scanner. Schedule it the same way: `scripts/run_auto_trader.bat` + Windows Task Scheduler, following the same steps as the watchlist scanner above but pointing at `run_auto_trader.bat` instead.
+
+**On "hidden gems"**: the screener only ranks by cheapness (P/E, P/B) within a well-known S&P 500 subset — it is not a true small-cap/undiscovered-stock hunter, and cheap isn't the same as good (a stock can be cheap because the market has correctly priced in real problems). The multi-agent analysis step is what does the actual judgment call on each candidate; treat the screener as a way to avoid manually curating a watchlist, not as investment research on its own.
+
+### Dashboard
+
+```bash
+pip install ".[dashboard]"
+tradingagents dashboard
+```
+
+Opens a local, read-only web page (default http://127.0.0.1:5000/, auto-refreshes every 60s) showing live account equity/cash/buying power, open positions, recent orders, an equity-history chart, and the latest `auto_trader.py` run's screener/decision results. It never places an order — it only reads from Alpaca and the local run artifacts. Binds to `127.0.0.1` (your machine only) by default; pass `--host 0.0.0.0` only if you understand the security implications of exposing it beyond localhost.
+
 ## Reproducibility
 
 TradingAgents is LLM-driven, so two runs of the same ticker and date can differ. This is expected for a research tool built on language models, not a defect. The variation comes from a few distinct sources, and it helps to separate them.

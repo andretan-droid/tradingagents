@@ -24,6 +24,23 @@ Breaking changes within the 0.x line are called out explicitly.
   ticker's failure. `scripts/run_watchlist_scan.bat` + a Windows Task
   Scheduler entry lets it run automatically on a daily schedule. See the
   README "Watchlist scanner (unattended daily runs)" section.
+- **Automated sector screener + portfolio-aware paper trading.**
+  `scripts/auto_trader.py` discovers candidates itself instead of reading a
+  fixed watchlist: `tradingagents.discovery.screener` ranks a curated S&P 500
+  sector universe (Technology/Healthcare/Energy/Financials,
+  `tradingagents/discovery/sp500_universe.py`) by trailing P/E and
+  price-to-book (no LLM calls), and the cheapest candidates per sector go
+  through full multi-agent analysis. Orders are sized and limited by
+  `tradingagents.execution.portfolio_router` (moderate profile by default:
+  5% of equity per position, 15 max open positions, 35% max per sector;
+  buys skip tickers already held, sells only fire when a position exists)
+  instead of the fixed-notional execution used by `analyze` /
+  `watchlist_scanner.py`. Optional Discord notifications
+  (`DISCORD_WEBHOOK_URL`) fire on every order and a run summary. New
+  `tradingagents dashboard` command (optional `[dashboard]` extra) serves a
+  local, read-only web page with live account/positions/orders, an
+  equity-history chart, and the latest run's screener results. See the
+  README "Automated screener + portfolio trading" and "Dashboard" sections.
 
 ## [0.3.0] — 2026-06-22
 
