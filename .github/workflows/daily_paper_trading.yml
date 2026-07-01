@@ -1,0 +1,91 @@
+name: Daily Paper Trading
+
+# Runs the paper-trading pipeline (paper_trading/runner.py) on a schedule and
+# commits the updated portfolio state + daily reports back to the repo, so
+# the Streamlit dashboard (dashboard/app.py) always reflects the latest run.
+#
+# IMPORTANT: this only fires on a schedule once it lives on the repo's
+# default branch -- GitHub does not run scheduled workflows from other
+# branches. Use "Run workflow" (workflow_dispatch) to test it before that.
+#
+# Required setup (repo Settings -> Secrets and variables -> Actions):
+#   Variables:
+#     TRADINGAGENTS_LLM_PROVIDER      e.g. "openrouter"
+#     TRADINGAGENTS_DEEP_THINK_LLM    a model slug your provider serves
+#     TRADINGAGENTS_QUICK_THINK_LLM   a (cheaper/faster) model slug
+#   Secrets (only the one matching your provider is needed):
+#     OPENROUTER_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY / GOOGLE_API_KEY / ...
+#
+# See paper_trading/README.md for why a hosted free-tier provider (e.g.
+# OpenRouter) is recommended here instead of local Ollama: this job runs on
+# a shared 2-core/7GB CPU-only runner, which is impractical for the 8B+
+# models Ollama needs for reliable tool-calling across ~15-20 LLM calls per
+# ticker. Ollama remains fully supported for local/manual runs.
+
+on:
+  schedule:
+    - cron: "0 22 * * 1-5" # 22:00 UTC, weekdays -- after the US market close
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Analysis date (YYYY-MM-DD). Leave blank for today."
+        required: false
+      tickers:
+        description: "Comma-separated ticker override. Leave blank for the watchlist."
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: daily-paper-trading
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Run daily paper trading
+        env:
+          RUN_DATE: ${{ github.event.inputs.date }}
+          RUN_TICKERS: ${{ github.event.inputs.tickers }}
+          TRADINGAGENTS_LLM_PROVIDER: ${{ vars.TRADINGAGENTS_LLM_PROVIDER }}
+          TRADINGAGENTS_DEEP_THINK_LLM: ${{ vars.TRADINGAGENTS_DEEP_THINK_LLM }}
+          TRADINGAGENTS_QUICK_THINK_LLM: ${{ vars.TRADINGAGENTS_QUICK_THINK_LLM }}
+          TRADINGAGENTS_LLM_BACKEND_URL: ${{ vars.TRADINGAGENTS_LLM_BACKEND_URL }}
+          TRADINGAGENTS_MAX_DEBATE_ROUNDS: ${{ vars.TRADINGAGENTS_MAX_DEBATE_ROUNDS || '1' }}
+          TRADINGAGENTS_MAX_RISK_ROUNDS: ${{ vars.TRADINGAGENTS_MAX_RISK_ROUNDS || '1' }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          ALPHA_VANTAGE_API_KEY: ${{ secrets.ALPHA_VANTAGE_API_KEY }}
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+        run: |
+          args=()
+          if [ -n "$RUN_DATE" ]; then args+=(--date "$RUN_DATE"); fi
+          if [ -n "$RUN_TICKERS" ]; then args+=(--tickers "$RUN_TICKERS"); fi
+          python -m paper_trading.runner "${args[@]}"
+
+      - name: Commit updated portfolio state and reports
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add paper_trading/state paper_trading/runs
+          git diff --cached --quiet || git commit -m "chore(paper-trading): daily run $(date -u +%F)"
+          git push

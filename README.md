@@ -290,6 +290,10 @@ What does not vary anymore: the analyzed company identity is resolved determinis
 
 Backtest results are not guaranteed to match any published figure. Returns depend on the model, the temperature, the date range, data quality, and the sampling above. Treat the framework as a research scaffold for studying multi-agent analysis, not as a strategy with a fixed, replicable return.
 
+## Paper Trading Agent
+
+`paper_trading/` runs the full analyst/researcher/risk/portfolio-manager pipeline daily against a watchlist and executes each ticker's rating as a simulated (paper-money) trade, with a Streamlit dashboard and an optional GitHub Actions schedule. See [`paper_trading/README.md`](paper_trading/README.md) for setup.
+
 ## Contributing
 
 Contributions are welcome: bug fixes, documentation, and feature ideas; past contributions are credited per release in [`CHANGELOG.md`](CHANGELOG.md).
