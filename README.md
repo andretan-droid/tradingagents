@@ -268,6 +268,28 @@ ta = TradingAgentsGraph(config=config)
 _, decision = ta.propagate("NVDA", "2026-01-15")
 ```
 
+## Paper Trading (Alpaca)
+
+TradingAgents can link to a free [Alpaca](https://alpaca.markets/) paper-trading account and automatically submit a market order for each completed run's decision, so you can watch the resulting trades land in a real (simulated) brokerage account. This only ever talks to Alpaca's paper endpoint — there is no live-trading path.
+
+1. Install the optional extra: `pip install ".[alpaca]"`
+2. Create a free paper account at https://app.alpaca.markets/paper/dashboard/overview and copy its API key/secret.
+3. Set the following in `.env` (see `.env.example`):
+   ```bash
+   ALPACA_API_KEY=...
+   ALPACA_SECRET_KEY=...
+   TRADINGAGENTS_BROKER_ENABLED=true
+   TRADINGAGENTS_ORDER_NOTIONAL_USD=1000   # fixed dollar amount per order, optional (default 1000)
+   ```
+4. Run `tradingagents analyze` as usual. Buy/Overweight ratings submit a paper buy order, Sell/Underweight submit a paper sell order, and Hold does nothing.
+5. Watch what happened:
+   ```bash
+   tradingagents portfolio
+   ```
+   This prints the account's equity/cash/buying power, open positions, and recent order history. It never places an order itself — it's read-only.
+
+Only supports plain US-listed stock tickers (`AAPL`, not `0700.HK` or `BTC-USD`); orders for other markets, crypto, forex, or commodities are skipped with a log message since Alpaca's paper equities account can't execute them. Position sizing is a fixed notional dollar amount per order — there is no portfolio-aware sizing, stop-loss, or risk-limit logic yet, so treat this as a way to observe the framework's decisions as real (paper) fills rather than a managed strategy.
+
 ## Reproducibility
 
 TradingAgents is LLM-driven, so two runs of the same ticker and date can differ. This is expected for a research tool built on language models, not a defect. The variation comes from a few distinct sources, and it helps to separate them.

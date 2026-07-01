@@ -24,6 +24,10 @@ _ENV_OVERRIDES = {
     "TRADINGAGENTS_GOOGLE_THINKING_LEVEL":   "google_thinking_level",
     "TRADINGAGENTS_OPENAI_REASONING_EFFORT": "openai_reasoning_effort",
     "TRADINGAGENTS_ANTHROPIC_EFFORT":        "anthropic_effort",
+    # Paper-trading execution (see tradingagents/execution/).
+    "TRADINGAGENTS_BROKER_ENABLED":          "broker_enabled",
+    "TRADINGAGENTS_BROKER_PROVIDER":         "broker_provider",
+    "TRADINGAGENTS_ORDER_NOTIONAL_USD":      "broker_order_notional_usd",
 }
 
 
@@ -98,6 +102,16 @@ DEFAULT_CONFIG = _apply_env_overrides({
     # Checkpoint/resume: when True, LangGraph saves state after each node
     # so a crashed run can resume from the last successful step.
     "checkpoint_enabled": False,
+    # Paper-trading execution: when True, every completed run submits a
+    # market order to the configured paper broker for Buy/Overweight (buy)
+    # or Sell/Underweight (sell) ratings; Hold is a no-op. Off by default so
+    # existing users see no behavior change. Requires ALPACA_API_KEY /
+    # ALPACA_SECRET_KEY and only supports plain US-listed stock tickers
+    # (asset_type == "stock", no exchange suffix). Always paper trading —
+    # see tradingagents/execution/alpaca_broker.py.
+    "broker_enabled": False,
+    "broker_provider": "alpaca",           # Only "alpaca" is currently supported.
+    "broker_order_notional_usd": 1000.0,   # Fixed dollar amount per order.
     # Output language for analyst reports and final decision
     # Internal agent debate stays in English for reasoning quality
     "output_language": "English",

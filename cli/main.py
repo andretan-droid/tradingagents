@@ -1288,5 +1288,81 @@ def analyze(
     run_analysis(checkpoint=checkpoint)
 
 
+@app.command()
+def portfolio():
+    """Show the linked Alpaca paper account: equity, open positions, and recent orders.
+
+    Read-only — this never places an order. Orders are submitted automatically
+    by ``analyze`` when ``TRADINGAGENTS_BROKER_ENABLED=true`` (see README).
+    """
+    try:
+        from tradingagents.execution.alpaca_broker import AlpacaBroker, AlpacaNotConfigured
+    except ImportError:
+        console.print(
+            '[red]Alpaca support isn\'t installed. Run:[/red] pip install "tradingagents[alpaca]"'
+        )
+        raise typer.Exit(1) from None
+
+    try:
+        broker = AlpacaBroker()
+    except AlpacaNotConfigured as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1) from None
+
+    try:
+        account = broker.get_account()
+        positions = broker.list_positions()
+        orders = broker.list_recent_orders(limit=20)
+    except Exception as e:
+        console.print(f"[red]Could not reach Alpaca: {e}[/red]")
+        raise typer.Exit(1) from None
+
+    console.print(
+        Panel(
+            f"Equity: [bold]${float(account.equity):,.2f}[/bold]   "
+            f"Cash: ${float(account.cash):,.2f}   "
+            f"Buying Power: ${float(account.buying_power):,.2f}",
+            title="Alpaca Paper Account",
+            border_style="cyan",
+        )
+    )
+
+    pos_table = Table(title="Open Positions", box=box.SIMPLE_HEAVY)
+    pos_table.add_column("Symbol")
+    pos_table.add_column("Qty", justify="right")
+    pos_table.add_column("Avg Entry", justify="right")
+    pos_table.add_column("Market Value", justify="right")
+    pos_table.add_column("Unrealized P/L", justify="right")
+    for p in positions:
+        pl = float(p.unrealized_pl)
+        pl_style = "green" if pl >= 0 else "red"
+        pos_table.add_row(
+            p.symbol,
+            p.qty,
+            f"${float(p.avg_entry_price):,.2f}",
+            f"${float(p.market_value):,.2f}",
+            f"[{pl_style}]${pl:,.2f}[/{pl_style}]",
+        )
+    console.print(pos_table)
+    if not positions:
+        console.print("[dim]No open positions.[/dim]")
+
+    order_table = Table(title="Recent Orders", box=box.SIMPLE_HEAVY)
+    order_table.add_column("Submitted")
+    order_table.add_column("Symbol")
+    order_table.add_column("Side")
+    order_table.add_column("Notional", justify="right")
+    order_table.add_column("Status")
+    for o in orders:
+        submitted = str(o.submitted_at)[:19] if o.submitted_at else "-"
+        notional = f"${float(o.notional):,.2f}" if o.notional else "-"
+        side = o.side.value if hasattr(o.side, "value") else str(o.side)
+        status = o.status.value if hasattr(o.status, "value") else str(o.status)
+        order_table.add_row(submitted, o.symbol, side, notional, status)
+    console.print(order_table)
+    if not orders:
+        console.print("[dim]No orders yet.[/dim]")
+
+
 if __name__ == "__main__":
     app()

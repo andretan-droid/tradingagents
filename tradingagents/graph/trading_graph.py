@@ -124,6 +124,11 @@ class TradingAgentsGraph:
         self.ticker = None
         self.log_states_dict = {}  # date to full state dict
 
+        # Lazily constructed paper-trading broker client (see
+        # _maybe_execute_paper_trade); None until first used, and left None
+        # entirely when broker_enabled is False.
+        self._broker = None
+
         # Set up the graph: keep the workflow for recompilation with a checkpointer.
         self.workflow = self.graph_setup.setup_graph(selected_analysts)
         self.graph = self.workflow.compile()
@@ -435,7 +440,72 @@ class TradingAgentsGraph:
                 self.config["data_cache_dir"], company_name, str(trade_date)
             )
 
-        return final_state, self.process_signal(final_state["final_trade_decision"])
+        decision = self.process_signal(final_state["final_trade_decision"])
+        self._maybe_execute_paper_trade(company_name, decision, asset_type)
+        return final_state, decision
+
+    def _get_broker(self):
+        """Lazily construct and cache the configured paper-trading broker client."""
+        if self._broker is None:
+            provider = self.config.get("broker_provider", "alpaca")
+            if provider != "alpaca":
+                raise ValueError(
+                    f"Unsupported broker_provider {provider!r}; only 'alpaca' is supported."
+                )
+            from tradingagents.execution.alpaca_broker import AlpacaBroker
+
+            self._broker = AlpacaBroker()
+        return self._broker
+
+    def _is_broker_tradeable_ticker(self, ticker: str) -> bool:
+        """Reject tickers Alpaca's US equity paper account cannot trade.
+
+        ``asset_type == "stock"`` already excludes crypto pairs, but it still
+        covers forex, futures/commodities, and indices (e.g. EURUSD, XAUUSD,
+        SPX500) as well as non-US exchange listings (e.g. 0700.HK, RELIANCE.NS)
+        — none of which Alpaca can execute as a US equity order.
+        """
+        non_us_suffixes = [suffix for suffix in self.config.get("benchmark_map", {}) if suffix]
+        upper = ticker.upper()
+        if any(upper.endswith(suffix.upper()) for suffix in non_us_suffixes):
+            return False
+
+        from tradingagents.dataflows.symbol_utils import normalize_symbol
+
+        normalized = normalize_symbol(ticker)
+        # Forex ("=X") and futures/commodities ("=F") quote symbols, and index
+        # symbols ("^..."), are not equities.
+        return "=" not in normalized and not normalized.startswith("^")
+
+    def _maybe_execute_paper_trade(self, ticker: str, rating: str, asset_type: str) -> None:
+        """Submit a paper order for ``rating`` when broker execution is enabled.
+
+        No-op unless ``broker_enabled`` is set in config. Errors (missing
+        credentials, network failures, unsupported ticker) are logged and
+        swallowed — a broker outage must never fail an analysis run that has
+        already completed successfully.
+        """
+        if not self.config.get("broker_enabled"):
+            return
+        if asset_type != "stock" or not self._is_broker_tradeable_ticker(ticker):
+            logger.info(
+                "Skipping paper order for %s: not a broker-tradeable US equity ticker.",
+                ticker,
+            )
+            return
+
+        try:
+            from tradingagents.execution.order_router import route_decision
+
+            broker = self._get_broker()
+            notional = float(self.config.get("broker_order_notional_usd", 1000.0))
+            result = route_decision(broker, ticker, rating, notional)
+            if result is not None:
+                logger.info("Paper order submitted for %s: %s", ticker, result)
+        except Exception:
+            logger.exception(
+                "Paper trade execution failed for %s; continuing without it.", ticker
+            )
 
     def _log_state(self, trade_date, final_state):
         """Log the final state to a JSON file."""

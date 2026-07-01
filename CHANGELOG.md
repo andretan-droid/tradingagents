@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Breaking changes within the 0.x line are called out explicitly.
 
+## [Unreleased]
+
+### Added
+
+- **Alpaca paper-trading execution.** Optional `[alpaca]` extra links a run to
+  a free Alpaca paper account: when `TRADINGAGENTS_BROKER_ENABLED=true`, each
+  completed decision submits a fixed-notional market paper order (Buy /
+  Overweight → buy, Sell / Underweight → sell, Hold → no-op) for plain
+  US-listed stock tickers. New `tradingagents portfolio` CLI command shows the
+  account's equity, open positions, and recent order history. Off by default;
+  always talks to Alpaca's paper endpoint only. See the README "Paper Trading
+  (Alpaca)" section.
+
 ## [0.3.0] — 2026-06-22
 
 Stabilization and extensibility release: a CI gate, a unified verified
