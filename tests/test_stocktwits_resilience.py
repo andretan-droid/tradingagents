@@ -25,7 +25,7 @@ def _raise(exc):
         def __exit__(self_inner, *a):
             return False
 
-        def read(self_inner):
+        def read(self_inner, amt=None):
             raise exc
     return _Resp()
 
@@ -92,7 +92,7 @@ def _stream(*bodies):
         def __exit__(self, *a):
             return False
 
-        def read(self):
+        def read(self, amt=None):
             return json.dumps(payload).encode()
     return _Resp()
 

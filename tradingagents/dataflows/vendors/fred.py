@@ -160,6 +160,8 @@ def _request(path: str, params: dict) -> dict:
             message = response.json().get("error_message", response.text)
         except ValueError:
             message = response.text
+        # The body is FRED's, and the request carried the key: keep it out as get_scrubbed does.
+        message = str(message).replace(api_key, "***") if api_key else message
         raise ValueError(f"FRED request failed: {message}")
     return response.json()
 

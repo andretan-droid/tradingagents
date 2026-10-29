@@ -359,6 +359,8 @@ class TradingAgentsGraph:
     def record_decision(self, company_name, trade_date, final_state):
         """Record a finished run: its state log, and its decision in the memory log
         for reflection on the next same-ticker run. propagate() and the CLI both end here."""
+        # The date names the state log's file, so a caller's value is checked here too.
+        trade_date = _validate_trade_date(trade_date)
         self._log_state(trade_date, final_state)
         decision = final_state.get("final_trade_decision")
         if not decision:

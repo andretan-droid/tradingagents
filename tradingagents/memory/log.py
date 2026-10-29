@@ -11,11 +11,13 @@ from tradingagents.dataflows.files import locked
 class TradingMemoryLog:
     """Append-only markdown log of trading decisions and reflections."""
 
-    # HTML comment: cannot appear in LLM prose output, safe as a hard delimiter
-    _SEPARATOR = "\n\n<!-- ENTRY_END -->\n\n"
-    # Precompiled patterns — avoids re-compilation on every load_entries() call
-    _DECISION_RE = re.compile(r"DECISION:\n(.*?)(?=\nREFLECTION:|\Z)", re.DOTALL)
-    _REFLECTION_RE = re.compile(r"REFLECTION:\n(.*?)$", re.DOTALL)
+    # Entry delimiter. Model text can carry it (news it read can plant it), so
+    # _defuse removes it from every decision and reflection before a write.
+    _MARKER = "<!-- ENTRY_END -->"
+    _SEPARATOR = f"\n\n{_MARKER}\n\n"
+    # Precompiled. A header counts only at the start of a line, where _defuse never leaves model text.
+    _DECISION_RE = re.compile(r"(?:^|\n)DECISION:\n(.*?)(?=\nREFLECTION:|\Z)", re.DOTALL)
+    _REFLECTION_RE = re.compile(r"(?:^|\n)REFLECTION:\n(.*?)$", re.DOTALL)
 
     def __init__(self, config: dict = None):
         cfg = config or {}
@@ -55,7 +57,7 @@ class TradingMemoryLog:
                         return
             rating = rating or parse_rating(final_trade_decision)
             tag = f"[{trade_date} | {ticker} | {rating} | pending]"
-            entry = f"{tag}\n\nDECISION:\n{final_trade_decision}{self._SEPARATOR}"
+            entry = f"{tag}\n\nDECISION:\n{self._defuse(final_trade_decision)}{self._SEPARATOR}"
             with open(self._log_path, "a", encoding="utf-8") as f:
                 f.write(entry)
 
@@ -187,7 +189,7 @@ class TradingMemoryLog:
                     )
                     rest = "\n".join(lines[1:])
                     new_blocks.append(
-                        f"{new_tag}\n\n{rest.lstrip()}\n\nREFLECTION:\n{reflection}"
+                        f"{new_tag}\n\n{rest.lstrip()}\n\nREFLECTION:\n{self._defuse(reflection)}"
                     )
                     updated = True
                 else:
@@ -241,7 +243,7 @@ class TradingMemoryLog:
                         )
                         rest = "\n".join(lines[1:])
                         new_blocks.append(
-                            f"{new_tag}\n\n{rest.lstrip()}\n\nREFLECTION:\n{upd['reflection']}"
+                            f"{new_tag}\n\n{rest.lstrip()}\n\nREFLECTION:\n{self._defuse(upd['reflection'])}"
                         )
                         del update_map[(trade_date, ticker)]
                         matched = True
@@ -257,6 +259,27 @@ class TradingMemoryLog:
             tmp_path.replace(self._log_path)
 
     # --- Helpers ---
+
+    @classmethod
+    def _defuse(cls, text: str) -> str:
+        """Keep model-written text from forging the log's structure.
+
+        Decisions and reflections come from a model that reads news and social
+        posts, so they can carry an entry delimiter followed by a forged tag,
+        such as a settled outcome that never happened. The delimiter is broken
+        up and each tag-shaped or section-header line is indented one space, so
+        the text reads the same but can never start an entry or a section, nor
+        match the duplicate guard in store_decision.
+        """
+        text = text.replace(cls._MARKER, "<!-- ENTRY END -->")
+        # splitlines, as the readers split: it also breaks on \r and other separators.
+        return "\n".join(
+            f" {line}"
+            if (line.startswith("[") and line.endswith("]"))
+            or line.startswith(("DECISION:", "REFLECTION:"))
+            else line
+            for line in text.splitlines()
+        )
 
     @staticmethod
     def _resolved_tag(

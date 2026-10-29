@@ -20,6 +20,7 @@ import http.client
 import json
 import logging
 from datetime import datetime
+from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 from tradingagents.dataflows.date_window import coverage_gap, in_window
@@ -29,6 +30,8 @@ logger = logging.getLogger(__name__)
 
 _API = "https://api.stocktwits.com/api/2/streams/symbol/{ticker}.json"
 _UA = "tradingagents/0.2 (+https://github.com/TauricResearch/TradingAgents)"
+# A stream page is tens of kilobytes; a body past this is refused unread.
+_MAX_BODY_BYTES = 5 * 1024 * 1024
 
 
 def _created_at(message) -> datetime | None:
@@ -94,11 +97,15 @@ def fetch_stocktwits_messages(
     symbol has no messages, or the response shape is unexpected — the
     caller never has to special-case None or exceptions.
     """
-    url = _API.format(ticker=_stocktwits_symbol(ticker))
+    # Quoted whole, so a symbol can only name a stream, never another path or a query.
+    url = _API.format(ticker=quote(_stocktwits_symbol(ticker), safe=""))
     req = Request(url, headers={"User-Agent": _UA, "Accept": "application/json"})
     try:
         with urlopen(req, timeout=timeout) as resp:
-            data = json.loads(resp.read())
+            body = resp.read(_MAX_BODY_BYTES + 1)
+        if len(body) > _MAX_BODY_BYTES:
+            raise http.client.HTTPException(f"response exceeded {_MAX_BODY_BYTES} bytes")
+        data = json.loads(body)
     except (OSError, http.client.HTTPException, json.JSONDecodeError) as exc:
         # OSError covers URLError/TimeoutError/connection resets; HTTPException
         # covers chunked-transfer errors (IncompleteRead/BadStatusLine, #1024).
